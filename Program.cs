@@ -6,10 +6,10 @@ namespace Geotiff2STLConverter
     {
         static void Main(string[] args)
         {
-            string stlPath = @"f:\Development\SunMeData\Data\Geotiff\DSM_50cm.asc";
+            string stlPath = args[0];
             Converter converter = new Converter(stlPath);
             converter.SetUpperThresholdInMeter(15);
-            converter.Convert();
+            converter.ConvertToStl();
 
             Console.ReadKey();
         }

@@ -1,6 +1,8 @@
-﻿using OSGeo.GDAL;
+﻿using Newtonsoft.Json;
+using OSGeo.GDAL;
 using STLConverter;
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace Geotiff2STLConverter
@@ -9,7 +11,6 @@ namespace Geotiff2STLConverter
     {
         private string destination;
         private string path;
-        private bool renderFaces;
         private int stride;
         private double scale;
         private bool isBinary;
@@ -22,9 +23,10 @@ namespace Geotiff2STLConverter
         private double lowerThreshold;
         private double upperThreshold;
 
+        public delegate void ValidatedTetras(V3 a, V3 b, V3 c, V3 d);
+
         public Converter(string path)
         {
-            renderFaces = true;
             stride = 1;
             scale = 1;
             isBinary = true;
@@ -75,7 +77,33 @@ namespace Geotiff2STLConverter
             this.upperThreshold = threshold;
         }
 
-        public void Convert()
+        public void ConvertToStl()
+        {
+            using (var outfile = new STLExporter(destination, isBinary))
+            {
+                ProcessData((a, b, c, d) =>
+                {
+                    outfile.WriteTriangle(a, b, c);
+                    outfile.WriteTriangle(b, c, d);
+                });
+            }
+            Console.WriteLine("Finished");
+        }
+
+        public string ConvertToJson()
+        {
+            List<List<V3>> points = new List<List<V3>>();
+
+            ProcessData((a, b, c, d) =>
+            {
+                points.Add(new List<V3>() { a, b, c, d });
+            });
+
+            return JsonConvert.SerializeObject(points);
+
+        }
+
+        private void ProcessData(ValidatedTetras mthd)
         {
             var dataset = Gdal.Open(path, Access.GA_ReadOnly);
 
@@ -102,55 +130,35 @@ namespace Geotiff2STLConverter
 
             heightdata.ReadRaster(XMinIndex, YMinIndex, XIndexSize, YIndexSize, databuffer, bufferXIndexSize, bufferYIndexSize, 0, 0);
 
-            using (var outfile = new STLExporter(destination, isBinary))
+
+
+            for (int bufferYIndex = 0; bufferYIndex < bufferYIndexSize - 1; ++bufferYIndex)
             {
-                if (renderFaces)
+                for (int bufferXIndex = 0; bufferXIndex < bufferXIndexSize - 1; ++bufferXIndex)
                 {
-                    for (int bufferYIndex = 0; bufferYIndex < bufferYIndexSize - 1; ++bufferYIndex)
-                    {
-                        for (int bufferXIndex = 0; bufferXIndex < bufferXIndexSize - 1; ++bufferXIndex)
-                        {
-                            int index = bufferYIndex * bufferXIndexSize + bufferXIndex;
-                            
-                            int xValue = bufferXIndex * stride + XMinIndex;
-                            int yValue = bufferYIndex * stride + YMinIndex;
-                            
-                            double zvalue = databuffer[index];
+                    int index = bufferYIndex * bufferXIndexSize + bufferXIndex;
 
-                            V3 pointA = new V3((float)(xValue * scale), (float)(yValue * scale), (float)(zvalue * scale));
-                            V3 pointB = new V3((float)(xValue * scale), (float)((yValue + stride) * scale), (float)(databuffer[index + bufferXIndexSize] * scale));
-                            V3 pointC = new V3((float)((xValue + stride) * scale), (float)(yValue * scale), (float)(databuffer[index + 1] * scale));
-                            V3 pointD = new V3((float)((xValue + stride) * scale), (float)((yValue + stride) * scale), (float)(databuffer[index + 1 + bufferXIndexSize] * scale));
+                    int xValue = bufferXIndex * stride + XMinIndex;
+                    int yValue = bufferYIndex * stride + YMinIndex;
 
-                            if (IsValidByZ(minmax[0], pointA, pointB, pointC, pointD))
-                            {
-                                if ((upperThreshold != -1 && IsHigerThanThreshold(minmax[1] - upperThreshold, pointA, pointB, pointC, pointD))
-                                || (lowerThreshold != -1 && IsHigerThanThreshold(minmax[0] + lowerThreshold, pointA, pointB, pointC, pointD))
-                                || (lowerThreshold == -1 && upperThreshold == -1))
-                                {
-                                    outfile.WriteTriangle(pointA, pointB, pointC);
-                                    outfile.WriteTriangle(pointB, pointC, pointD);
-                                }
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    for (int bufferYIndex = 0; bufferYIndex < bufferYIndexSize; ++bufferYIndex)
+                    double zvalue = databuffer[index];
+
+                    V3 pointA = new V3((float)(xValue * scale), (float)(yValue * scale), (float)(zvalue * scale));
+                    V3 pointB = new V3((float)(xValue * scale), (float)((yValue + stride) * scale), (float)(databuffer[index + bufferXIndexSize] * scale));
+                    V3 pointC = new V3((float)((xValue + stride) * scale), (float)(yValue * scale), (float)(databuffer[index + 1] * scale));
+                    V3 pointD = new V3((float)((xValue + stride) * scale), (float)((yValue + stride) * scale), (float)(databuffer[index + 1 + bufferXIndexSize] * scale));
+
+                    if (IsValidByZ(minmax[0], pointA, pointB, pointC, pointD))
                     {
-                        for (int bufferXIndex = 0; bufferXIndex < bufferXIndexSize; ++bufferXIndex)
+                        if ((upperThreshold != -1 && IsHigerThanThreshold(minmax[1] - upperThreshold, pointA, pointB, pointC, pointD))
+                        || (lowerThreshold != -1 && IsHigerThanThreshold(minmax[0] + lowerThreshold, pointA, pointB, pointC, pointD))
+                        || (lowerThreshold == -1 && upperThreshold == -1))
                         {
-                            int index = bufferYIndex * bufferXIndexSize + bufferXIndex;
-                            int xValue = bufferXIndex * stride + XMinIndex;
-                            int yValue = bufferYIndex * stride + YMinIndex;
-                            double zvalue = databuffer[index];
-                            outfile.WritePoint((float)(xValue * scale), (float)(yValue * scale), (float)(zvalue * scale));
+                            mthd?.Invoke(pointA, pointB, pointC, pointD);
                         }
                     }
                 }
             }
-            Console.WriteLine("Finished!");
         }
 
         private bool IsValidByZ(double minZ, params V3[] vectors)
