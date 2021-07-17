@@ -58,14 +58,11 @@ namespace Geotiff2STLConverter
         {
             var dataset = Gdal.Open(path, Access.GA_ReadOnly);
 
-            //Console.WriteLine("number of things is:");
-            //Console.WriteLine(dataset.RasterCount);
             //band numbers start at 1
             var heightdata = dataset.GetRasterBand(1);
             double[] minmax = new double[2];
             heightdata.ComputeRasterMinMax(minmax, 0);
 
-            //decide what max and min index should be
             int YMinIndex;
             int YMaxIndex;
             (YMinIndex, YMaxIndex) = GetMinMax(YMin, YMax, heightdata.YSize);
@@ -83,9 +80,8 @@ namespace Geotiff2STLConverter
             double[] databuffer = new double[bufferXIndexSize * bufferYIndexSize];
 
             heightdata.ReadRaster(XMinIndex, YMinIndex, XIndexSize, YIndexSize, databuffer, bufferXIndexSize, bufferYIndexSize, 0, 0);
-            //misc stuff
             heightdata.GetNoDataValue(out double nodataval, out int hasnodataval);
-            //Console.WriteLine($"has nodata val: {hasnodataval}, is {nodataval}");
+
             var thing = heightdata.GetRasterColorInterpretation();
             var thing2 = Gdal.GetDataTypeSize(heightdata.DataType);
 
