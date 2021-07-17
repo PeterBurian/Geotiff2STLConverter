@@ -1,6 +1,7 @@
 ﻿using OSGeo.GDAL;
 using STLConverter;
 using System;
+using System.IO;
 
 namespace Geotiff2STLConverter
 {
@@ -8,6 +9,7 @@ namespace Geotiff2STLConverter
     {
         private string destination;
         private string path;
+        private string outputFileName;
         private bool renderFaces;
         private int stride;
         private double scale;
@@ -18,7 +20,9 @@ namespace Geotiff2STLConverter
         private double XMin;
         private double XMax;
 
-        public Converter(string path)
+        public Converter(string path) :this (path, "Output") { }
+
+        public Converter(string path, string outputFileName)
         {
             renderFaces = true;
             stride = 1;
@@ -31,6 +35,7 @@ namespace Geotiff2STLConverter
             XMax = -1.0;
 
             this.path = path;
+            this.outputFileName = outputFileName;
 
             Init();
         }
@@ -41,14 +46,17 @@ namespace Geotiff2STLConverter
             Gdal.AllRegister();
             if (destination == null)
             {
-                destination = System.IO.Path.GetDirectoryName(path) + "/Output.stl";
+                if (String.IsNullOrEmpty(outputFileName))
+                {
+                    outputFileName = "Output.stl";
+                }
+                destination = Path.Combine(Path.GetDirectoryName(path), String.Format("{0}.stl", outputFileName));
             }
         }
 
         public void Convert()
         {
             var dataset = Gdal.Open(path, Access.GA_ReadOnly);
-            Driver drv = dataset.GetDriver();
 
             //Console.WriteLine("number of things is:");
             //Console.WriteLine(dataset.RasterCount);
